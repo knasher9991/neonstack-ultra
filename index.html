@@ -293,7 +293,36 @@
       </button>
     </div>
 
+  
+<div style="position:fixed;bottom:8px;left:50%;transform:translateX(-50%);z-index:10;text-align:center;">
+  <a href="#privacy" onclick="showPrivacy()" style="color:rgba(150,180,255,0.5);font-size:clamp(.3rem,.9vw,.42rem);font-family:Orbitron,sans-serif;letter-spacing:1px;text-decoration:none;">
+    Politique de confidentialité
+  </a>
+</div>
+
+<!-- PRIVACY POLICY OVERLAY -->
+<div id="privacy-overlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:1000;flex-direction:column;align-items:center;justify-content:center;padding:20px;overflow-y:auto;">
+  <div style="max-width:500px;color:rgba(200,220,255,0.85);font-family:Arial,sans-serif;font-size:0.75rem;line-height:1.6;">
+    <h2 style="font-family:Orbitron,sans-serif;color:#ffd700;font-size:1rem;margin-bottom:16px;">🔒 Politique de Confidentialité</h2>
+    <p><b>Super Bombliss Ultra</b> — Dernière mise à jour : juin 2025</p>
+    <br>
+    <p><b>Données collectées</b><br>
+    Ce jeu ne collecte aucune donnée personnelle. Les scores, trophées et statistiques sont uniquement sauvegardés localement sur votre appareil via localStorage et ne sont jamais transmis à un serveur.</p>
+    <br>
+    <p><b>Publicités</b><br>
+    Ce jeu est hébergé sur CrazyGames qui peut afficher des publicités. CrazyGames peut collecter des données anonymes à des fins publicitaires. Consultez la <a href="https://www.crazygames.com/privacy-policy" target="_blank" style="color:#4af;">politique de confidentialité de CrazyGames</a> pour plus d'informations.</p>
+    <br>
+    <p><b>Cookies</b><br>
+    Ce jeu n'utilise pas de cookies. Le localStorage utilisé reste sur votre appareil et n'est pas partagé.</p>
+    <br>
+    <p><b>Contact</b><br>
+    Pour toute question, contactez le développeur via CrazyGames.</p>
+    <br>
+    <button onclick="hidePrivacy()" style="background:rgba(100,100,255,0.3);border:1px solid rgba(100,150,255,0.5);color:#fff;padding:8px 24px;border-radius:8px;cursor:pointer;font-family:Orbitron,sans-serif;font-size:0.6rem;letter-spacing:2px;">FERMER</button>
   </div>
+</div>
+
+</div>
 </div>
 
 <!-- TROPHY OVERLAY -->
@@ -3006,7 +3035,8 @@ function _startGameCore(){
   clearAutoSave();
   statsOnGameStart();
   _statsSessionStart=Date.now();
-  _infiniteCycle=0; _infiniteBossQueue=[];
+  // Signal gameplay started to both SDKs
+  _dualGameplayStart();
   initBoard();score=0;lines=0;bombs=0;
   // Use selected start level
   const startLvl=parseInt(document.getElementById('start-level')?.value||'1');
@@ -3078,6 +3108,10 @@ function spawnPiece(){
   if(newLevel>level){
     trophyOnLevel();
     level=newLevel;
+    // Pub tous les 5 niveaux (10, 15, 20, 25, 30...)
+    if(newLevel>1 && newLevel%5===0 && !bossLevels[newLevel]){
+      _dualCommercialBreak(null);
+    }
     sndLevelUp();
     clearTimeout(dropInterval);
     const bossLevels={3:'greta',6:'groin',9:'leon',12:'maurice',15:'pirlo',18:'tortue',21:'vlad',24:'gege',27:'serge',30:'pierre'};
@@ -3788,7 +3822,17 @@ function endGame(){
   // Board collapse animation: rows fall down one by one
   let row=0;
   const collapseInterval=setInterval(()=>{
-    if(row>=ROWS){ clearInterval(collapseInterval); showGameOverOverlay(isRecord,best); return; }
+    if(row>=ROWS){
+        clearInterval(collapseInterval);
+        // Pub 1 fois sur 3 au game over
+        window._gameOverCount = (window._gameOverCount||0) + 1;
+        if(window._gameOverCount % 3 === 0){
+          _dualCommercialBreak(()=>showGameOverOverlay(isRecord,best));
+        } else {
+          showGameOverOverlay(isRecord,best);
+        }
+        return;
+      }
     // Spawn particles for this row
     for(let c=0;c<COLS;c++){
       if(board[row][c]){
@@ -6907,9 +6951,18 @@ function _dualCommercialBreak(cb){
 }
 // CrazyGames loading events
 (function(){
-  const cg=_crazySDK();
-  if(cg && cg.game && cg.game.sdkGameLoadingStop) cg.game.sdkGameLoadingStop();
-  else if(cg && cg.game && cg.game.gameplayStart) {} // v2 ready
+  // Wait for CrazyGames SDK to be ready
+  function _initCrazyGames(){
+    const cg = _crazySDK();
+    if(!cg) return;
+    // Signal that the game is loaded and ready
+    if(cg.game && cg.game.sdkGameLoadingStop) cg.game.sdkGameLoadingStop();
+    else if(cg.game && cg.game.gameLoadingFinished) cg.game.gameLoadingFinished();
+  }
+  // Try immediately and also after a short delay
+  _initCrazyGames();
+  setTimeout(_initCrazyGames, 1000);
+  setTimeout(_initCrazyGames, 3000);
 })();
 // CrazyGames happytime on trophy unlock
 function _crazyHappytime(){
@@ -6928,6 +6981,15 @@ function _crazyHappytime(){
     window._pokiReady = true;
   });
 })();
+
+
+// ── POLITIQUE DE CONFIDENTIALITÉ ──
+function showPrivacy(){
+  document.getElementById('privacy-overlay').style.display='flex';
+}
+function hidePrivacy(){
+  document.getElementById('privacy-overlay').style.display='none';
+}
 
 // ── MUSIC MANAGER ── (one track at a time, no overlap, random shuffle)
 // Priority: bossMusic > blockRaid > game tracks
